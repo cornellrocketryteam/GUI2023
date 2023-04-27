@@ -1,6 +1,4 @@
-# GUI2023
-Ground Station GUI - 2023
-
+# Ground Station GUI 2023
 
 This repo contains two versions of the Ground Station GUI.
 
