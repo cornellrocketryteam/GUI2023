@@ -77,7 +77,7 @@ class GroundStationGUI():
         self.altset = False
 
         self.f = open('data.csv', 'a')
-        self.ser = serial.Serial(port = "COM3", baudrate = 9600)
+        self.ser = serial.Serial(port = "COM8", baudrate = 9600)
         self.app.after(1000, lambda: self.update())
 
         #self.app.mainloop()
