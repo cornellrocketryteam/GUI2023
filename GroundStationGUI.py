@@ -16,6 +16,7 @@ from matplotlib.backends.backend_tkagg import (
 import matplotlib
 matplotlib.use("TkAgg")
 from PIL import ImageTk, Image
+from Parsing import Parse
 from DataDisplays import Displays
 from MapDisplay import Map
 from AltDisplay import AltGraph
@@ -24,14 +25,17 @@ import json
 import csv
 
 
-class GroundStationGUI():
+class GroundStationGUI(Parse):
 
     def __init__(self):
+        super().__init__()
+
         self.app = Tk()
         self.app.title("CRT Ground Station")
         self.w = self.app.winfo_screenwidth()
         self.h = self.app.winfo_screenheight()
         self.images = ["acc.jpg", "gyr.jpg", "mag.jpg", "acc.jpg"]
+        self.f = open('data.csv', 'w')
 
         # CRT header [ENSURE FONT IS DOWNLOADED]
         self.f0 = Frame(master = self.app, width = self.w, height = self.h*0.05, bg = "#142C2E")
@@ -46,47 +50,44 @@ class GroundStationGUI():
         self.f2.pack(fill = tk.BOTH, side = tk.BOTTOM, expand = True)
 
         # feature panels
-        self.map = self.panel(self.f1, tk.LEFT, "GPS")
+        self.mapF = self.panel(self.f1, tk.LEFT, "GPS")
         self.msg_alt = self.panel(self.f1, tk.RIGHT, "")
-        self.alt = self.panel(self.msg_alt, tk.TOP, "Altimeter")
-        self.msg = self.panel(self.msg_alt, tk.BOTTOM, "Messages")
+        self.altF = self.panel(self.msg_alt, tk.TOP, "Altimeter")
+        self.msgF = self.panel(self.msg_alt, tk.BOTTOM, "Messages")
         # sensor panels
-        self.acc = self.panel(self.f2, tk.LEFT, "Acceleration")
-        self.gyr = self.panel(self.f2, tk.LEFT, "Gyroscope")
-        self.mag = self.panel(self.f2, tk.LEFT, "Magnetometer")
-        self.ther = self.panel(self.f2, tk.LEFT, "Thermometer")
+        self.accF = self.panel(self.f2, tk.LEFT, "Acceleration")
+        self.gyrF = self.panel(self.f2, tk.LEFT, "Gyroscope")
+        self.magF = self.panel(self.f2, tk.LEFT, "Magnetometer")
+        self.therF = self.panel(self.f2, tk.LEFT, "Thermometer")
 
         # set images
         self.img1 = ImageTk.PhotoImage(Image.open("acc.jpg"))
-        self.a = Label(self.acc, image = self.img1, borderwidth = 0)
+        self.a = Label(self.accF, image = self.img1, borderwidth = 0)
         self.a.pack()
         self.img2 = ImageTk.PhotoImage(Image.open("gyro.jpg"))
-        self.g = Label(self.gyr, image = self.img2, borderwidth = 0)
+        self.g = Label(self.gyrF, image = self.img2, borderwidth = 0)
         self.g.pack()
         self.img3 = ImageTk.PhotoImage(Image.open("mag.jpg"))
-        self.m = Label(self.mag, image = self.img3, borderwidth = 0)
+        self.m = Label(self.magF, image = self.img3, borderwidth = 0)
         self.m.pack()
         self.img4 = ImageTk.PhotoImage(Image.open("ther.jpg"))
-        self.t = Label(self.ther, image = self.img4, borderwidth = 0)
+        self.t = Label(self.therF, image = self.img4, borderwidth = 0)
         self.t.pack()
 
-        #dsb = Scrollbar(self.data, orient = "vertical", bg = "white", command = self.data.yview)
-        #msb = Scrollbar(self.msg, orient = "vertical", bg = "white", command = self.msg.yview)
 
-        self.disp = Displays(self.acc, self.gyr, self.mag, self.ther, self.msg, self.alt)
-        self.mapgraph = Map()
-        self.altgraph = AltGraph()
+        self.disp = Displays(self.accF, self.gyrF, self.magF, self.therF, self.msgF, self.altF, self.sensorreadings)
+        self.mapgraph = Map(self.gps, self.mapF)
+        self.altgraph = AltGraph(self.alt, self.altF)
 
-        #self.embedAltGraph()
-        #self.embedMapGraph()
-
-        self.f = open('data.csv', 'w')
-        self.ser = serial.Serial(port = "COM3", baudrate = 9600)
+        self.ser = serial.Serial(port = "COM8", baudrate = 9600)
         self.app.after(1000, lambda: self.update())
 
         #self.app.mainloop()
 
     def panel(self, f, s, header):
+        """
+        Creates a Frame object using a given master Frame f to overlay on, a given alignment side s, and a text to display header.
+        """
         p = Frame(master = f, bg = "black", highlightbackground="#52C6D0", highlightthickness=2)
         p.pack(fill = tk.BOTH, side = s, expand = True)
         p_title = Label(master = p, text = header, bg = "black", fg = "white", font = ('Helvetica', 14))
@@ -94,56 +95,42 @@ class GroundStationGUI():
         return p
 
     def createButton(self, m, t, c):
+        """
+        Creates a button with a master Frame m, a display text t, and a command to execute upon click c.
+        """
         b = Button(master = m, text = t, command = c)
         b.pack(side = tk.TOP)
 
-    def embedAltGraph(self):
-        canvas = FigureCanvasTkAgg(self.altgraph.fig, master = self.alt)
-        canvas.get_tk_widget().pack(side = tk.TOP, fill = tk.BOTH, expand = True)
-        canvas.draw()
-
-    def embedMapGraph(self):
-        canvas = FigureCanvasTkAgg(self.mapgraph.fig, master = self.map)
-        canvas.get_tk_widget().pack(side = tk.TOP, fill = tk.BOTH, expand = True)
-        canvas.draw()
-
     def update(self):
-        self.ser.reset_output_buffer()
+        """
+        Reads from serial and updates attributes in response to the new data, then calls on update methods for
+        each object on the GUI that needs to change with the new data.
+        """
         try:
-            self.disp.jstr = self.ser.readline().decode("utf-8")
-            self.altgraph.jstr = self.disp.jstr
-            self.mapgraph.jstr = self.disp.jstr
-            self.f.write(self.disp.jstr)
-
-            try:
-                self.disp.setValues()
-                self.mapgraph.setValues()
-                self.altgraph.setValues()
-            except:
-                pass
-
-            self.a.config(image = self.img1)
-            self.a.pack()
-            self.g.config(image = self.img2)
-            self.g.pack()
-            self.m.config(image = self.img3)
-            self.m.pack()
-            self.t.config(image = self.img4)
-            self.t.pack()
-
-            #self.altgraph.altUpdate()
-            self.altgraph.ani.resume()
-            self.disp.printValues()
-            self.disp.dispUpdate()
-            self.mapgraph.updateMap()
-
+            self.serUpdate()
         except:
             pass
+
+        self.a.config(image = self.img1)
+        self.a.pack()
+        self.g.config(image = self.img2)
+        self.g.pack()
+        self.m.config(image = self.img3)
+        self.m.pack()
+        self.t.config(image = self.img4)
+        self.t.pack()
+
+
+        # only calling on the update method for the DataDisplays and AltGraph object due to the Ground Station
+        # only receiving altimeter data at competition.
+        self.disp.dispUpdate(self.sensorreadings)
+        self.altgraph.altUpdate(self.alt)
+        #self.mapgraph.updateMap(self.gps)
 
         self.app.after(1000, lambda: self.update())
 
 
 if __name__ == "__main__":
-    print('almost sure')
     gsg = GroundStationGUI()
     gsg.app.mainloop()
+    gsg.f.close()
